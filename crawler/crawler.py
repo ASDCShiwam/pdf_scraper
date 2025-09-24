@@ -191,6 +191,7 @@ def _request_with_retries(
     return None
 
 
+
 def _is_html_response(response: requests.Response) -> bool:
     """Return ``True`` when ``response`` looks like an HTML document."""
 
@@ -202,6 +203,7 @@ def _is_html_response(response: requests.Response) -> bool:
         return True
 
     return False
+
 
 
 def _unique_target_path(folder: Path, pdf_name: str, url: str) -> Path:
