@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
 from urllib.parse import urljoin, urldefrag, urlparse
 
+import bs4
 import requests
 from bs4 import BeautifulSoup
 
@@ -108,7 +109,15 @@ def crawl_and_download(
         if response is None:
             continue
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        if not _is_html_response(response):
+            logger.debug("Skipping non-HTML content at %s", current_url)
+            continue
+
+        try:
+            soup = BeautifulSoup(response.text, "html.parser")
+        except (bs4.FeatureNotFound, bs4.builder.ParserRejectedMarkup, AssertionError) as exc:
+            logger.warning("Skipping %s: unable to parse HTML (%s)", current_url, exc)
+            continue
         for link in soup.select("a[href]"):
             href = link.get("href")
             if not href:
@@ -180,6 +189,21 @@ def _request_with_retries(
 
     logger.error("Giving up on %s after %s attempts", url, retries)
     return None
+
+
+
+def _is_html_response(response: requests.Response) -> bool:
+    """Return ``True`` when ``response`` looks like an HTML document."""
+
+    content_type = response.headers.get("Content-Type", "").lower()
+    if "html" in content_type or "xml" in content_type:
+        return True
+
+    if content_type.startswith("text/"):
+        return True
+
+    return False
+
 
 
 def _unique_target_path(folder: Path, pdf_name: str, url: str) -> Path:
