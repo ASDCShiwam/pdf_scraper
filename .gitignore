@@ -1,15 +1,132 @@
-# Ignore Python virtual environment directory
-pdf_scraper_env/
-env/
-
-# Ignore the downloaded PDFs folder
-.pdf
-pdfs/
-
-# Ignore .env files (if you're using them for configuration)
-*.env
-
-# Ignore Python bytecode files
-*.pyc
-*.pyo
+# Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+pdm.lock
+
+# Environments
+.env
+.env.*
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+.venv/
+.python-env/
+
+# Flask instance folder
+instance/
+
+# Flask uploads
+*.log
+
+# mypy
+.mypy_cache/
+.dmypy.json
+.dmypy/
+
+# Pyre type checker
+.pyre/
+
+# pytype
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+*.sw[po]
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Project-specific directories
+# Local folder where PDFs are stored after crawling
+/downloaded_pdfs/
+
+# ElasticSearch data dumps or scratch space
+/elasticsearch_index/*.json
+/elasticsearch_index/*.tmp
+
+# Local search index exports
+/elasticsearch_index/backups/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
