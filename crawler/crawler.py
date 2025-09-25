@@ -54,7 +54,10 @@ def crawl_and_download(
     allowed_hosts: Optional[Iterable[str]] = None,
     max_pages: Optional[int] = None,
     max_pdfs: Optional[int] = None,
+
     verify_ssl: Optional[bool] = None,
+
+
 ) -> List[Dict[str, str]]:
     """Crawl a website starting from ``start_url`` and download every PDF that is found.
 
@@ -82,9 +85,11 @@ def crawl_and_download(
     max_pdfs:
         Optional safety limit to stop downloading once this many PDFs were
         successfully saved. ``None`` disables the limit.
+
     verify_ssl:
         When ``True`` (default), SSL certificates are validated. Pass ``False`` to
         allow crawling intranet sites that use self-signed certificates.
+
 
     Returns
     -------
@@ -97,7 +102,9 @@ def crawl_and_download(
     download_folder = Path(download_folder)
     download_folder.mkdir(parents=True, exist_ok=True)
 
+
     verify_ssl = _prepare_verify_setting(verify_ssl)
+
 
     visited: Set[str] = set()
     queue: deque[str] = deque([start_url])
@@ -161,7 +168,11 @@ def crawl_and_download(
                 if full_url in downloaded_urls:
                     continue
 
+
                 pdf_info = download_pdf(full_url, download_folder, verify_ssl=verify_ssl)
+
+                pdf_info = download_pdf(full_url, download_folder)
+
                 if pdf_info:
                     pdf_info["source_page"] = current_url
                     downloaded.append(pdf_info)
@@ -228,6 +239,7 @@ def _is_html_response(response: requests.Response) -> bool:
     return False
 
 
+
 def _unique_target_path(folder: Path, pdf_name: str, url: str) -> Path:
     """Return a unique file path for ``pdf_name`` within ``folder``."""
 
@@ -244,12 +256,16 @@ def _unique_target_path(folder: Path, pdf_name: str, url: str) -> Path:
     return candidate
 
 
+
 def download_pdf(
     url: str,
     folder: Path,
     *,
     verify_ssl: bool,
 ) -> Optional[Dict[str, str]]:
+
+def download_pdf(url: str, folder: Path) -> Optional[Dict[str, str]]:
+
     """Download a PDF file and return metadata about it."""
 
     folder = Path(folder)

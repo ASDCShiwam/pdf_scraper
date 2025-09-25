@@ -42,6 +42,26 @@ def _initial_context() -> Dict[str, Any]:
     }
 
 
+
+ES_AVAILABLE = False
+try:
+    create_index()
+except RuntimeError as exc:
+    logger.warning("Elasticsearch unavailable at startup: %s", exc)
+else:
+    ES_AVAILABLE = True
+
+
+def _initial_context() -> Dict[str, Any]:
+    return {
+        "message": None,
+        "documents": [],
+        "error": None,
+        "indexing_error": None,
+    }
+
+
+
 def _store_context(context: Dict[str, Any]) -> Dict[str, Any]:
     app.config["LAST_CONTEXT"] = context
     return context
@@ -87,12 +107,14 @@ def _parse_limit(value: str, field_name: str) -> Optional[int]:
     return parsed
 
 
+
 def _parse_checkbox(value: Optional[str]) -> bool:
     if value is None:
         return False
 
     normalized = value.strip().lower()
     return normalized in {"1", "true", "on", "yes"}
+
 
 
 def _format_downloaded_documents(documents: list) -> list:
@@ -140,14 +162,24 @@ def start_scraping():
     }
 
     if not website_url:
+
         context = _initial_context()
         context["error"] = "A website URL is required."
         context["form_values"].update(form_values)
         context = _store_context(context)
+
+        context = _store_context(
+            {
+                **_initial_context(),
+                "error": "A website URL is required.",
+            }
+        )
+
         return render_template("index.html", **context), 400
 
     try:
         start_url = _normalize_start_url(website_url)
+
         max_pages = _parse_limit(max_pages_raw, "Maximum pages")
         max_pdfs = _parse_limit(max_pdfs_raw, "Maximum PDFs")
     except ValueError as exc:
@@ -155,6 +187,12 @@ def start_scraping():
         context["error"] = str(exc)
         context["form_values"].update(form_values)
         context = _store_context(context)
+
+        max_pages = _parse_limit(request.form.get("max_pages", ""), "Maximum pages")
+        max_pdfs = _parse_limit(request.form.get("max_pdfs", ""), "Maximum PDFs")
+    except ValueError as exc:
+        context = _store_context({**_initial_context(), "error": str(exc)})
+
         return render_template("index.html", **context), 400
 
     download_folder: Path = app.config["DOWNLOAD_DIR"]
@@ -169,7 +207,10 @@ def start_scraping():
         allowed_hosts=allowed_hosts,
         max_pages=max_pages,
         max_pdfs=max_pdfs,
+
         verify_ssl=verify_ssl,
+
+
     )
     documents = _format_downloaded_documents(downloaded_documents)
 
@@ -198,6 +239,7 @@ def start_scraping():
         "indexed": indexed_count,
         "max_pages": max_pages,
         "max_pdfs": max_pdfs,
+
         "verify_ssl": verify_ssl,
     }
 
@@ -205,6 +247,11 @@ def start_scraping():
 
     context = _initial_context()
     context.update(
+
+    }
+
+    context = _store_context(
+
         {
             "message": message,
             "documents": documents,
@@ -212,8 +259,10 @@ def start_scraping():
             "indexing_error": indexing_error,
         }
     )
+
     context["form_values"].update(form_values)
     context = _store_context(context)
+
 
     return render_template("index.html", **context)
 
