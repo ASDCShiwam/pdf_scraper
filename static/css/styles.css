@@ -90,6 +90,24 @@ body {
     font-weight: 600;
 }
 
+.form-group.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.form-group.checkbox label {
+    margin: 0;
+    font-weight: 500;
+}
+
+.form-group.checkbox input[type="checkbox"] {
+    width: auto;
+    height: 1.1rem;
+    cursor: pointer;
+}
+
+
 input[type="text"],
 input[type="url"],
 input[type="number"],

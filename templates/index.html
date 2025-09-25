@@ -9,6 +9,25 @@
     <form action="/start_scraping" method="POST" class="form-grid" data-loading>
         <div class="form-group">
             <label for="url">Website URL</label>
+
+            <input type="url" id="url" name="url" placeholder="https://example.com" value="{{ form_values.url }}" required>
+        </div>
+        <div class="form-group">
+            <label for="max_pages">Maximum pages (optional)</label>
+            <input type="number" id="max_pages" name="max_pages" min="1" placeholder="e.g. 100" value="{{ form_values.max_pages }}">
+        </div>
+        <div class="form-group">
+            <label for="max_pdfs">Maximum PDFs (optional)</label>
+            <input type="number" id="max_pdfs" name="max_pdfs" min="1" placeholder="e.g. 50" value="{{ form_values.max_pdfs }}">
+        </div>
+        <div class="form-group checkbox">
+            <input type="checkbox" id="ignore_ssl" name="ignore_ssl" value="1" {% if form_values.ignore_ssl %}checked{% endif %}>
+            <label for="ignore_ssl">Ignore SSL certificate errors (self-signed intranet sites)</label>
+        </div>
+        <button type="submit" class="primary">Start Scraping</button>
+    </form>
+    <p class="helper-text">Uncheck "Ignore SSL certificate errors" to enforce HTTPS validation when crawling public websites.</p>
+
             <input type="url" id="url" name="url" placeholder="https://example.com" required>
         </div>
         <div class="form-group">
@@ -21,6 +40,7 @@
         </div>
         <button type="submit" class="primary">Start Scraping</button>
     </form>
+
 
     {% if error %}
         <p class="alert alert-error">{{ error }}</p>
@@ -55,6 +75,13 @@
             <dt>PDFs indexed</dt>
             <dd>{{ message.indexed }}</dd>
         </div>
+
+        <div>
+            <dt>SSL verification</dt>
+            <dd>{{ 'Enabled' if message.verify_ssl else 'Disabled' }}</dd>
+        </div>
+=======
+
     </dl>
 </section>
 {% endif %}
