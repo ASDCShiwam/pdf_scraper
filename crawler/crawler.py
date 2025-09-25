@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import time
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
 from urllib.parse import urljoin, urldefrag, urlparse
 
+import bs4
 import requests
 from bs4 import BeautifulSoup
 
@@ -27,9 +29,20 @@ VERIFY_SSL = os.getenv("CRAWLER_VERIFY_SSL", "true").lower() not in {
 
 _SESSION = requests.Session()
 _SESSION.headers.update(HEADERS)
-_SESSION.verify = VERIFY_SSL
 
 logger = logging.getLogger(__name__)
+
+
+def _prepare_verify_setting(verify_override: Optional[bool]) -> bool:
+    verify = VERIFY_SSL if verify_override is None else verify_override
+    if not verify:
+        try:  # pragma: no cover - defensive import
+            from urllib3.exceptions import InsecureRequestWarning
+
+            requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+        except Exception:  # pragma: no cover - best effort only
+            pass
+    return verify
 
 
 def crawl_and_download(
@@ -39,6 +52,9 @@ def crawl_and_download(
     delay: int = 5,
     *,
     allowed_hosts: Optional[Iterable[str]] = None,
+    max_pages: Optional[int] = None,
+    max_pdfs: Optional[int] = None,
+    verify_ssl: Optional[bool] = None,
 ) -> List[Dict[str, str]]:
     """Crawl a website starting from ``start_url`` and download every PDF that is found.
 
@@ -60,6 +76,16 @@ def crawl_and_download(
         is useful for intranet environments to avoid accidentally crawling the
         public internet when offline mirrors link externally.
 
+    max_pages:
+        Optional safety limit to stop crawling after visiting this many pages.
+        ``None`` disables the limit.
+    max_pdfs:
+        Optional safety limit to stop downloading once this many PDFs were
+        successfully saved. ``None`` disables the limit.
+    verify_ssl:
+        When ``True`` (default), SSL certificates are validated. Pass ``False`` to
+        allow crawling intranet sites that use self-signed certificates.
+
     Returns
     -------
     list of dict
@@ -71,9 +97,12 @@ def crawl_and_download(
     download_folder = Path(download_folder)
     download_folder.mkdir(parents=True, exist_ok=True)
 
-    visited = set()
+    verify_ssl = _prepare_verify_setting(verify_ssl)
+
+    visited: Set[str] = set()
     queue: deque[str] = deque([start_url])
     downloaded: List[Dict[str, str]] = []
+    downloaded_urls: Set[str] = set()
     allowed: Optional[Set[str]] = None
     if allowed_hosts:
         allowed = set()
@@ -84,16 +113,33 @@ def crawl_and_download(
                 allowed.add(lowered.split(":", 1)[0])
 
     while queue:
+        if max_pages is not None and len(visited) >= max_pages:
+            logger.info("Reached maximum page limit of %s", max_pages)
+            break
+
         current_url = queue.popleft()
         if current_url in visited:
             continue
         visited.add(current_url)
 
-        response = _request_with_retries(current_url, retries=retries, delay=delay)
+        response = _request_with_retries(
+            current_url,
+            retries=retries,
+            delay=delay,
+            verify_ssl=verify_ssl,
+        )
         if response is None:
             continue
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        if not _is_html_response(response):
+            logger.debug("Skipping non-HTML content at %s", current_url)
+            continue
+
+        try:
+            soup = BeautifulSoup(response.text, "html.parser")
+        except (bs4.FeatureNotFound, bs4.builder.ParserRejectedMarkup, AssertionError) as exc:
+            logger.warning("Skipping %s: unable to parse HTML (%s)", current_url, exc)
+            continue
         for link in soup.select("a[href]"):
             href = link.get("href")
             if not href:
@@ -112,10 +158,18 @@ def crawl_and_download(
                 continue
 
             if parsed.path.lower().endswith(".pdf"):
-                pdf_info = download_pdf(full_url, download_folder)
+                if full_url in downloaded_urls:
+                    continue
+
+                pdf_info = download_pdf(full_url, download_folder, verify_ssl=verify_ssl)
                 if pdf_info:
                     pdf_info["source_page"] = current_url
                     downloaded.append(pdf_info)
+                    downloaded_urls.add(full_url)
+
+                    if max_pdfs is not None and len(downloaded) >= max_pdfs:
+                        logger.info("Reached maximum PDF limit of %s", max_pdfs)
+                        return downloaded
             elif full_url not in visited:
                 queue.append(full_url)
 
@@ -126,13 +180,15 @@ def _request_with_retries(
     url: str,
     retries: int = 3,
     delay: int = 5,
+    *,
+    verify_ssl: bool,
 ) -> Optional[requests.Response]:
     """Fetch ``url`` while retrying transient failures."""
 
     attempt = 0
     while attempt < retries:
         try:
-            response = _SESSION.get(url, timeout=15)
+            response = _SESSION.get(url, timeout=15, verify=verify_ssl)
             if response.status_code == 200:
                 logger.info("Successfully accessed %s", url)
                 return response
@@ -159,7 +215,41 @@ def _request_with_retries(
     return None
 
 
-def download_pdf(url: str, folder: Path) -> Optional[Dict[str, str]]:
+def _is_html_response(response: requests.Response) -> bool:
+    """Return ``True`` when ``response`` looks like an HTML document."""
+
+    content_type = response.headers.get("Content-Type", "").lower()
+    if "html" in content_type or "xml" in content_type:
+        return True
+
+    if content_type.startswith("text/"):
+        return True
+
+    return False
+
+
+def _unique_target_path(folder: Path, pdf_name: str, url: str) -> Path:
+    """Return a unique file path for ``pdf_name`` within ``folder``."""
+
+    candidate = folder / pdf_name
+    if not candidate.exists():
+        return candidate
+
+    stem, suffix = os.path.splitext(pdf_name)
+    safe_stem = stem or "downloaded"
+    # Use a deterministic suffix derived from the URL to avoid clobbering
+    # similarly named files discovered on different pages.
+    hashed = hashlib.sha1(url.encode("utf-8")).hexdigest()[:10]
+    candidate = folder / f"{safe_stem}_{hashed}{suffix or '.pdf'}"
+    return candidate
+
+
+def download_pdf(
+    url: str,
+    folder: Path,
+    *,
+    verify_ssl: bool,
+) -> Optional[Dict[str, str]]:
     """Download a PDF file and return metadata about it."""
 
     folder = Path(folder)
@@ -167,22 +257,27 @@ def download_pdf(url: str, folder: Path) -> Optional[Dict[str, str]]:
 
     parsed = urlparse(url)
     pdf_name = os.path.basename(parsed.path) or "downloaded.pdf"
-    target_path = folder / pdf_name
+    target_path = _unique_target_path(folder, pdf_name, url)
 
     if target_path.exists():
         logger.info("%s already exists, skipping download", target_path)
         return {
             "url": url,
             "path": str(target_path),
-            "filename": pdf_name,
+            "filename": target_path.name,
             "downloaded_at": datetime.utcfromtimestamp(target_path.stat().st_mtime)
             .isoformat()
             + "Z",
         }
 
     try:
-        response = _SESSION.get(url, timeout=30)
-        response.raise_for_status()
+        with _SESSION.get(url, timeout=30, stream=True, verify=verify_ssl) as response:
+            response.raise_for_status()
+
+            with open(target_path, "wb") as file_pointer:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file_pointer.write(chunk)
     except requests.exceptions.Timeout:
         logger.warning("Timeout while downloading %s", url)
         return None
@@ -190,13 +285,10 @@ def download_pdf(url: str, folder: Path) -> Optional[Dict[str, str]]:
         logger.error("Failed to download %s: %s", url, exc)
         return None
 
-    with open(target_path, "wb") as file_pointer:
-        file_pointer.write(response.content)
-
     logger.info("Downloaded %s", pdf_name)
     return {
         "url": url,
         "path": str(target_path),
-        "filename": pdf_name,
+        "filename": target_path.name,
         "downloaded_at": datetime.utcnow().isoformat() + "Z",
     }
